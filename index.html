@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>CrispNW Canvas</title>
+    <style>
+        :root {
+            --bg: #121212;
+            --text: #ffffff;
+            --green: #2ecc71;
+            --yellow: #f1c40f;
+            --red: #e74c3c;
+            --gray: #7f8c8d;
+            --input-bg: #1e1e1e;
+        }
+
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        h2 { text-align: center; margin: 10px 0; color: var(--gray); font-size: 1.2rem; }
+
+        .button-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            flex-grow: 1;
+        }
+
+        .btn {
+            width: 100%;
+            min-height: 80px; /* High-contrast tap targets */
+            border: none;
+            border-radius: 12px;
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #000;
+            cursor: pointer;
+            transition: opacity 0.1s;
+        }
+
+        .btn:active { opacity: 0.6; }
+        .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+        .btn-green { background-color: var(--green); }
+        .btn-yellow { background-color: var(--yellow); }
+        .btn-red { background-color: var(--red); }
+        .btn-white { background-color: #ffffff; }
+
+        #notes {
+            width: 100%;
+            background: var(--input-bg);
+            border: 2px solid var(--gray);
+            border-radius: 8px;
+            color: white;
+            padding: 15px;
+            font-size: 1.1rem;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }
+
+        #status-msg {
+            text-align: center;
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>CRISP NW CANVASSING</h2>
+
+    <div class="button-stack">
+        <button class="btn btn-green" onclick="handleSubmit('Interested')">Interested</button>
+        <button class="btn btn-yellow" onclick="handleSubmit('Maybe')">Maybe</button>
+        <button class="btn btn-red" onclick="handleSubmit('Not Home')">Not Home</button>
+        <button class="btn btn-white" onclick="handleSubmit('Skip')">Skip</button>
+    </div>
+
+    <textarea id="notes" placeholder="Optional notes... (e.g. Roof moss, dirty gutters)"></textarea>
+    
+    <div id="status-msg"></div>
+
+    <script>
+        // --- CONFIGURATION ---
+        const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbzM09ewwg0gQ131RSyfUI9jd_jQf3btp13rQ9ns3R-i7hxTJEBPIrPB1NVvwl0mnCoM/exec";
+        let isSubmitting = false;
+
+        async function handleSubmit(status) {
+            if (isSubmitting) return; // Debounce
+            
+            setLoading(true);
+            showStatus("Gathering data...", "var(--gray)");
+
+            try {
+                // Get Location
+                const pos = await getCurrentLocation();
+                
+                const payload = {
+                    timestamp: new Date().toISOString(),
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                    status: status,
+                    notes: document.getElementById('notes').value
+                };
+
+                // POST to Google Apps Script
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    mode: 'no-cors', // Apps Script requires no-cors often
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                showStatus(`Success: ${status} Logged`, "var(--green)");
+                document.getElementById('notes').value = ""; // Clear notes on success
+            } catch (error) {
+                showStatus("Error: " + error.message, "var(--red)");
+            } finally {
+                setTimeout(() => {
+                    setLoading(false);
+                    hideStatus();
+                }, 2000);
+            }
+        }
+
+        function getCurrentLocation() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) reject(new Error("No GPS support"));
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 5000
+                });
+            });
+        }
+
+        function setLoading(state) {
+            isSubmitting = state;
+            const btns = document.querySelectorAll('.btn');
+            btns.forEach(b => b.disabled = state);
+        }
+
+        function showStatus(text, color) {
+            const msg = document.getElementById('status-msg');
+            msg.innerText = text;
+            msg.style.backgroundColor = color;
+            msg.style.display = "block";
+        }
+
+        function hideStatus() {
+            document.getElementById('status-msg').style.display = "none";
+        }
+    </script>
+</body>
+</html>

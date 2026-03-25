@@ -148,7 +148,7 @@
   <header>
     <div class="header-title">
       <h1>CrispNW</h1>
-      <p>Field Canvas — v8.0 (Form-Wrapper)</p>
+      <p>Field Canvas — v9.0 (GET Pivot)</p>
     </div>
     <div id="queue-badge">
       <span class="q-count" id="queue-count">0</span>
@@ -198,6 +198,7 @@
   </div>
 
   <script>
+    // V9: GET Pivot — payload appended as URL query param, never stripped on 302 redirect
     var BACKEND_URL   = 'https://script.google.com/macros/s/AKfycbxPBvNlcHPgVMCwXSEzqMKZO9ZerSN87OtWXS00Kkd3nJlxnvHMG-cDsmXdRW2TJTt2/exec';
     var QUEUE_KEY     = 'crispnw_pendingLeads';
     var SYNC_INTERVAL = 60 * 1000;
@@ -240,36 +241,26 @@
       catch (e) { return []; }
     }
 
-    function saveQueue(q) {
-      localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
-    }
+    function saveQueue(q) { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
 
     function enqueue(payload) {
-      var q = getQueue();
-      q.push(payload);
-      saveQueue(q);
+      var q = getQueue(); q.push(payload); saveQueue(q);
+      console.log('[CrispNW] Queued lead. Queue size:', q.length);
     }
 
     function dequeue(index) {
-      var q = getQueue();
-      q.splice(index, 1);
-      saveQueue(q);
+      var q = getQueue(); q.splice(index, 1); saveQueue(q);
     }
 
     function updateQueueUI() {
       var q     = getQueue();
       var count = q.length;
-      var badge = document.getElementById('queue-badge');
-      var sync  = document.getElementById('sync-indicator');
-
       document.getElementById('queue-count').textContent = count;
-      badge.classList.toggle('visible', count > 0);
-      sync.classList.toggle('visible',  count > 0);
-
+      document.getElementById('queue-badge').classList.toggle('visible', count > 0);
+      document.getElementById('sync-indicator').classList.toggle('visible', count > 0);
       if (count > 0) {
         document.getElementById('sync-msg').textContent =
-          count + ' lead' + (count > 1 ? 's' : '') +
-          ' queued — waiting for signal to sync…';
+          count + ' lead' + (count > 1 ? 's' : '') + ' queued — waiting for signal to sync…';
       }
     }
 
@@ -290,29 +281,30 @@
         notes     : document.getElementById('notes').value.trim()
       };
 
+      // V9: GET pivot — append JSON payload as URL query param.
+      // GET URL params are NEVER stripped during Google's 302 redirect,
+      // unlike POST bodies under strict no-cors mobile enforcement.
       try {
-        var controller  = new AbortController();
-        var timeoutId   = setTimeout(function() { controller.abort(); }, 8000);
+        var controller = new AbortController();
+        var timeoutId  = setTimeout(function() { controller.abort(); }, 8000);
 
-        // V8: Wrap in URLSearchParams - browsers pass form data through 302 redirects
-        // without stripping the body, even under no-cors on strict mobile browsers.
-        var formBody = new URLSearchParams();
-        formBody.append('data', JSON.stringify(payload));
+        var requestUrl = BACKEND_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
 
-        await fetch(BACKEND_URL, {
-          method : 'POST',
+        await fetch(requestUrl, {
+          method : 'GET',
           mode   : 'no-cors',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body   : formBody,
           signal : controller.signal
         });
 
+        // Opaque response (status 0) — no throw = request reached Google. Treat as success.
         clearTimeout(timeoutId);
+        console.log('[CrispNW] Lead sent via GET pivot (v9):', payload.status, payload.lat, payload.lng);
         setStatus('success', '✅ "' + status + '" logged! Check your Sheet.');
         addToHistory(status, payload, false);
         document.getElementById('notes').value = '';
 
       } catch (err) {
+        console.warn('[CrispNW] GET failed, queuing lead:', err.message);
         enqueue(payload);
         updateQueueUI();
         setStatus('queued',
@@ -328,28 +320,30 @@
       var q = getQueue();
       if (q.length === 0) return;
 
+      console.log('[CrispNW] Sync loop: attempting to flush', q.length, 'queued leads…');
+
       for (var i = q.length - 1; i >= 0; i--) {
         var payload = q[i];
         try {
           var controller = new AbortController();
           var tid = setTimeout(function() { controller.abort(); }, 8000);
 
-          // V8: form-wrapper for sync queue too
-          var syncBody = new URLSearchParams();
-          syncBody.append('data', JSON.stringify(payload));
+          // V9: GET pivot for sync queue too
+          var syncUrl = BACKEND_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
 
-          await fetch(BACKEND_URL, {
-            method : 'POST',
+          await fetch(syncUrl, {
+            method : 'GET',
             mode   : 'no-cors',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body   : syncBody,
             signal : controller.signal
           });
 
+          // Opaque — no throw = success
           clearTimeout(tid);
+          console.log('[CrispNW] Synced queued lead via GET pivot (v9):', payload.timestamp);
           dequeue(i);
 
         } catch (err) {
+          console.warn('[CrispNW] Still offline, lead remains queued:', payload.timestamp);
           break;
         }
       }
@@ -368,8 +362,7 @@
     setInterval(trySyncQueue, SYNC_INTERVAL);
 
     function setStatus(type, msg) {
-      var bar = document.getElementById('status-bar');
-      bar.className = type;
+      document.getElementById('status-bar').className = type;
       document.getElementById('status-msg').textContent = msg;
     }
 
@@ -380,13 +373,12 @@
       var list = document.getElementById('history-list');
       var li   = document.createElement('li');
 
-      var badgeClass = isQueued         ? 'badge-queued'
+      var badgeClass = isQueued              ? 'badge-queued'
                      : status === 'Interested' ? 'badge-interested'
                      : status === 'Maybe'       ? 'badge-maybe'
-                     : 'badge-not';
+                     :                           'badge-not';
 
       var badgeLabel = isQueued ? '📵 Queued' : status;
-
       var coords = payload.lat.toFixed(5) + ', ' + payload.lng.toFixed(5);
       var time   = new Date(payload.timestamp).toLocaleTimeString();
 

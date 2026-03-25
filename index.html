@@ -56,6 +56,14 @@
       width: 8px; height: 8px; border-radius: 50%; background: #ff6d00;
       animation: pulse 1.2s infinite; flex-shrink: 0;
     }
+    #sync-now-btn {
+      margin-left: auto; flex-shrink: 0;
+      background: #ff6d00; color: #fff;
+      border: none; border-radius: 8px; padding: 5px 10px;
+      font-size: 12px; font-weight: 700; cursor: pointer;
+      white-space: nowrap;
+    }
+    #sync-now-btn:active { opacity: 0.75; }
 
     .card {
       background: #fff; border-radius: 16px;
@@ -140,7 +148,7 @@
   <header>
     <div class="header-title">
       <h1>CrispNW</h1>
-      <p>Field Canvas — v6.0 (CORS Fix)</p>
+      <p>Field Canvas — v7.0 (Blind-Success)</p>
     </div>
     <div id="queue-badge">
       <span class="q-count" id="queue-count">0</span>
@@ -151,6 +159,7 @@
   <div id="sync-indicator">
     <div class="sync-dot"></div>
     <span id="sync-msg">Waiting for signal to sync queued leads…</span>
+    <button id="sync-now-btn" onclick="trySyncQueue()">🔄 Sync Now</button>
   </div>
 
   <div class="card">
@@ -189,6 +198,7 @@
   </div>
 
   <script>
+    // ─── CONFIG ──────────────────────────────────────────────────────────────────────
     var BACKEND_URL   = 'https://script.google.com/macros/s/AKfycbxPBvNlcHPgVMCwXSEzqMKZO9ZerSN87OtWXS00Kkd3nJlxnvHMG-cDsmXdRW2TJTt2/exec';
     var QUEUE_KEY     = 'crispnw_pendingLeads';
     var SYNC_INTERVAL = 60 * 1000;
@@ -230,37 +240,28 @@
       try { return JSON.parse(localStorage.getItem(QUEUE_KEY)) || []; }
       catch (e) { return []; }
     }
-
-    function saveQueue(q) {
-      localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
-    }
-
+    function saveQueue(q) { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
     function enqueue(payload) {
-      var q = getQueue();
-      q.push(payload);
-      saveQueue(q);
+      var q = getQueue(); q.push(payload); saveQueue(q);
+      console.log('[CrispNW] Queued. Queue size:', q.length);
     }
-
     function dequeue(index) {
-      var q = getQueue();
-      q.splice(index, 1);
-      saveQueue(q);
+      var q = getQueue(); q.splice(index, 1); saveQueue(q);
     }
 
     function updateQueueUI() {
       var q     = getQueue();
       var count = q.length;
-      var badge = document.getElementById('queue-badge');
-      var sync  = document.getElementById('sync-indicator');
       document.getElementById('queue-count').textContent = count;
-      badge.classList.toggle('visible', count > 0);
-      sync.classList.toggle('visible',  count > 0);
+      document.getElementById('queue-badge').classList.toggle('visible', count > 0);
+      document.getElementById('sync-indicator').classList.toggle('visible', count > 0);
       if (count > 0) {
         document.getElementById('sync-msg').textContent =
-          count + ' lead' + (count > 1 ? 's' : '') + ' queued — waiting for signal to sync…';
+          count + ' lead' + (count > 1 ? 's' : '') + ' queued — tap Sync Now or wait 60s…';
       }
     }
 
+    // ═══ SUBMIT LEAD (Antigravity + Blind-Success)
     async function submitLead(status) {
       if (currentLat === null) {
         setStatus('error', '⚠️ No GPS fix yet. Please wait.');
@@ -268,6 +269,7 @@
       }
       enableButtons(false);
       setStatus('loading', '⏳ Logging lead…');
+
       var payload = {
         timestamp : new Date().toISOString(),
         lat       : currentLat,
@@ -275,66 +277,88 @@
         status    : status,
         notes     : document.getElementById('notes').value.trim()
       };
-      var sent = false;
+
       try {
-        var controller  = new AbortController();
-        var timeoutId   = setTimeout(function() { controller.abort(); }, 8000);
+        var controller = new AbortController();
+        var timeoutId  = setTimeout(function() { controller.abort(); }, 8000);
+
+        // mode:no-cors returns an opaque response (status 0).
+        // If fetch() resolves without throwing, the request reached Google's servers.
         await fetch(BACKEND_URL, {
           method : 'POST',
+          mode   : 'no-cors',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
           body   : JSON.stringify(payload),
           signal : controller.signal
         });
+
         clearTimeout(timeoutId);
-        sent = true;
+        console.log('[CrispNW] Sent (blind-success):', status, payload.lat, payload.lng);
         setStatus('success', '✅ "' + status + '" logged! Check your Sheet.');
         addToHistory(status, payload, false);
         document.getElementById('notes').value = '';
+
       } catch (err) {
+        console.warn('[CrispNW] POST failed, queuing:', err.message);
         enqueue(payload);
         updateQueueUI();
-        setStatus('queued', '📵 No signal — lead queued (' + getQueue().length + ' waiting). Will sync automatically.');
+        setStatus('queued', '📵 No signal — lead queued (' + getQueue().length + ' pending). Tap 🔄 Sync Now when back in range.');
         addToHistory(status, payload, true);
         document.getElementById('notes').value = '';
       }
+
       enableButtons(true);
     }
 
+    // ═══ SYNC QUEUE — blind-success drain
     async function trySyncQueue() {
       var q = getQueue();
       if (q.length === 0) return;
+
+      console.log('[CrispNW] Syncing', q.length, 'queued leads…');
+      setStatus('loading', '🔄 Syncing ' + q.length + ' queued lead' + (q.length > 1 ? 's' : '') + '…');
+
       for (var i = q.length - 1; i >= 0; i--) {
         var payload = q[i];
         try {
           var controller = new AbortController();
           var tid = setTimeout(function() { controller.abort(); }, 8000);
+
           await fetch(BACKEND_URL, {
             method : 'POST',
+            mode   : 'no-cors',
             headers: { 'Content-Type': 'text/plain;charset=utf-8' },
             body   : JSON.stringify(payload),
             signal : controller.signal
           });
+
           clearTimeout(tid);
+          console.log('[CrispNW] Synced (blind-success):', payload.timestamp);
           dequeue(i);
+
         } catch (err) {
+          console.warn('[CrispNW] Still offline:', err.message);
           break;
         }
       }
+
       var remaining = getQueue().length;
       updateQueueUI();
+
       if (remaining === 0) {
-        setStatus('success', '🔄 Sync complete — all queued leads pushed to Sheet!');
+        setStatus('success', '🔄 Sync complete — all leads pushed to Sheet!');
         setTimeout(function() {
           setStatus('idle', '📍 Ready — tap a status button to log this address.');
         }, 3000);
+      } else {
+        setStatus('queued', '📵 Still offline — ' + remaining + ' lead' + (remaining > 1 ? 's' : '') + ' queued. Retry when in range.');
       }
     }
 
     setInterval(trySyncQueue, SYNC_INTERVAL);
 
     function setStatus(type, msg) {
-      var bar = document.getElementById('status-bar');
-      bar.className = type;
+      document.getElementById('status-bar').className = type;
       document.getElementById('status-msg').textContent = msg;
     }
 

@@ -28,6 +28,7 @@
     .header-title h1 { font-size: 26px; font-weight: 700; color: #1a73e8; }
     .header-title p  { font-size: 13px; color: #888; margin-top: 2px; }
 
+    /* ── Queue Badge ──────────────────────────────────────────────────── */
     #queue-badge {
       display: none;
       flex-direction: column; align-items: center; justify-content: center;
@@ -42,6 +43,7 @@
     #queue-badge .q-count { font-size: 20px; font-weight: 900; line-height: 1; }
     #queue-badge .q-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.9; }
 
+    /* ── Sync indicator ────────────────────────────────────────────────── */
     #sync-indicator {
       display: none;
       width: 100%; max-width: 480px;
@@ -65,6 +67,7 @@
     }
     #sync-now-btn:active { opacity: 0.75; }
 
+    /* ── Notes card ───────────────────────────────────────────────────── */
     .card {
       background: #fff; border-radius: 16px;
       box-shadow: 0 2px 12px rgba(0,0,0,0.10);
@@ -81,6 +84,7 @@
     }
     .card textarea:focus { border-color: #1a73e8; }
 
+    /* ── GPS + buttons ────────────────────────────────────────────────── */
     .gps-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
     .gps-dot {
       width: 12px; height: 12px; border-radius: 50%; background: #ccc; flex-shrink: 0;
@@ -109,6 +113,7 @@
     .btn-maybe      { background: linear-gradient(135deg, #fbbc04, #e0a800); color: #333; }
     .btn-not        { background: linear-gradient(135deg, #ea4335, #c62828); }
 
+    /* ── Status bar ───────────────────────────────────────────────────── */
     #status-bar {
       width: 100%; max-width: 480px; min-height: 44px; border-radius: 12px;
       padding: 10px 16px; font-size: 14px;
@@ -121,6 +126,7 @@
     #status-bar.queued  { background: #fff3e0; color: #e65100; }
     #status-bar.error   { background: #fce8e6; color: #c62828; }
 
+    /* ── History ──────────────────────────────────────────────────────── */
     .history-card { width: 100%; max-width: 480px; margin-top: 20px; }
     .history-card h2 {
       font-size: 14px; font-weight: 700; color: #444;
@@ -148,14 +154,16 @@
   <header>
     <div class="header-title">
       <h1>CrispNW</h1>
-      <p>Field Canvas — v9.0 (GET Pivot)</p>
+      <p>Field Canvas — v10.0 (Iframe Engine)</p>
     </div>
+    <!-- Queue badge: shows count of leads waiting for signal -->
     <div id="queue-badge">
       <span class="q-count" id="queue-count">0</span>
       <span class="q-label">Queued</span>
     </div>
   </header>
 
+  <!-- Sync indicator: visible when there are queued leads -->
   <div id="sync-indicator">
     <div class="sync-dot"></div>
     <span id="sync-msg">Waiting for signal to sync queued leads…</span>
@@ -198,14 +206,20 @@
   </div>
 
   <script>
-    // V9: GET Pivot — payload appended as URL query param, never stripped on 302 redirect
-    var BACKEND_URL   = 'https://script.google.com/macros/s/AKfycbxPBvNlcHPgVMCwXSEzqMKZO9ZerSN87OtWXS00Kkd3nJlxnvHMG-cDsmXdRW2TJTt2/exec';
-    var QUEUE_KEY     = 'crispnw_pendingLeads';
-    var SYNC_INTERVAL = 60 * 1000;
+    // ─── CONFIG ────────────────────────────────────────────────────────────
+    // V10: Iframe Engine — hidden <form> POST bypasses fetch() and all CORS/redirect
+    // restrictions. Backend reads payload via e.parameter.data (form field "data").
+    var BACKEND_URL   = 'https://script.google.com/macros/s/AKfycbzwyXuhH133aqQMWf4J7CJOTlwlYN-iTgHmbbQWL1TCYCjoTVVdi__xpea36Xi2X38v/exec';
+    var QUEUE_KEY     = 'crispnw_pendingLeads';   // localStorage key
+    var SYNC_INTERVAL = 60 * 1000;                // 60 seconds
 
+    // ─── STATE ─────────────────────────────────────────────────────────────
     var currentLat = null;
     var currentLng = null;
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // GPS
+    // ═══════════════════════════════════════════════════════════════════════
     function initGPS() {
       if (!navigator.geolocation) { setGPS('error', 'GPS not supported.'); return; }
       navigator.geolocation.watchPosition(
@@ -236,34 +250,92 @@
       });
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // QUEUE HELPERS  (localStorage-backed offline queue)
+    // ═══════════════════════════════════════════════════════════════════════
     function getQueue() {
       try { return JSON.parse(localStorage.getItem(QUEUE_KEY)) || []; }
       catch (e) { return []; }
     }
 
-    function saveQueue(q) { localStorage.setItem(QUEUE_KEY, JSON.stringify(q)); }
+    function saveQueue(q) {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(q));
+    }
 
     function enqueue(payload) {
-      var q = getQueue(); q.push(payload); saveQueue(q);
+      var q = getQueue();
+      q.push(payload);
+      saveQueue(q);
       console.log('[CrispNW] Queued lead. Queue size:', q.length);
     }
 
     function dequeue(index) {
-      var q = getQueue(); q.splice(index, 1); saveQueue(q);
+      var q = getQueue();
+      q.splice(index, 1);
+      saveQueue(q);
     }
 
     function updateQueueUI() {
       var q     = getQueue();
       var count = q.length;
+      var badge = document.getElementById('queue-badge');
+      var sync  = document.getElementById('sync-indicator');
+
       document.getElementById('queue-count').textContent = count;
-      document.getElementById('queue-badge').classList.toggle('visible', count > 0);
-      document.getElementById('sync-indicator').classList.toggle('visible', count > 0);
+      badge.classList.toggle('visible', count > 0);
+      sync.classList.toggle('visible',  count > 0);
+
       if (count > 0) {
         document.getElementById('sync-msg').textContent =
-          count + ' lead' + (count > 1 ? 's' : '') + ' queued — waiting for signal to sync…';
+          count + ' lead' + (count > 1 ? 's' : '') +
+          ' queued — waiting for signal to sync…';
       }
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // TRANSPORT — sendDataForm(payload)
+    //   V10: Iframe Engine — bypasses fetch() entirely.
+    //   A hidden <form> POSTs to the backend via a hidden <iframe> target.
+    //   Form submissions are NOT subject to CORS, no-cors restrictions, or
+    //   302-redirect body stripping on any browser or mobile network.
+    //   Blind-success: form.submit() fires and we resolve after 1.5s.
+    // ═══════════════════════════════════════════════════════════════════════
+    function sendDataForm(payload) {
+      return new Promise(function(resolve, reject) {
+        if (!navigator.onLine) return reject(new Error('Offline'));
+
+        var iframeName = 'hidden_iframe_' + Date.now();
+        var iframe = document.createElement('iframe');
+        iframe.name = iframeName;
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+
+        var form = document.createElement('form');
+        form.method = 'POST';
+        form.action = BACKEND_URL;
+        form.target = iframeName;
+
+        var input = document.createElement('input');
+        input.type  = 'hidden';
+        input.name  = 'data';
+        input.value = JSON.stringify(payload);
+        form.appendChild(input);
+        document.body.appendChild(form);
+
+        form.submit();
+
+        // Blind success — form is fire-and-forget; resolve after iframe settles
+        setTimeout(function() {
+          iframe.remove();
+          form.remove();
+          resolve();
+        }, 1500);
+      });
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SUBMIT LEAD  (offline-first)
+    // ═══════════════════════════════════════════════════════════════════════
     async function submitLead(status) {
       if (currentLat === null) {
         setStatus('error', '⚠️ No GPS fix yet. Please wait.');
@@ -281,70 +353,52 @@
         notes     : document.getElementById('notes').value.trim()
       };
 
-      // V9: GET pivot — append JSON payload as URL query param.
-      // GET URL params are NEVER stripped during Google's 302 redirect,
-      // unlike POST bodies under strict no-cors mobile enforcement.
+      // ── Attempt live submission via iframe form engine ───────────────────
       try {
-        var controller = new AbortController();
-        var timeoutId  = setTimeout(function() { controller.abort(); }, 8000);
+        await sendDataForm(payload);
 
-        var requestUrl = BACKEND_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
-
-        await fetch(requestUrl, {
-          method : 'GET',
-          mode   : 'no-cors',
-          signal : controller.signal
-        });
-
-        // Opaque response (status 0) — no throw = request reached Google. Treat as success.
-        clearTimeout(timeoutId);
-        console.log('[CrispNW] Lead sent via GET pivot (v9):', payload.status, payload.lat, payload.lng);
+        // Blind success — form submitted without throw = data is on its way.
+        console.log('[CrispNW] Lead sent via iframe engine (v10):', payload.status, payload.lat, payload.lng);
         setStatus('success', '✅ "' + status + '" logged! Check your Sheet.');
         addToHistory(status, payload, false);
         document.getElementById('notes').value = '';
 
       } catch (err) {
-        console.warn('[CrispNW] GET failed, queuing lead:', err.message);
+        // ── Network fail (navigator.onLine === false) → push to offline queue
+        console.warn('[CrispNW] Offline, queuing lead:', err.message);
         enqueue(payload);
         updateQueueUI();
         setStatus('queued',
           '📵 No signal — lead queued (' + getQueue().length + ' waiting). Will sync automatically.');
-        addToHistory(status, payload, true);
+        addToHistory(status, payload, true); // true = queued
         document.getElementById('notes').value = '';
       }
 
       enableButtons(true);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // SYNC LOOP  — runs every 60 s, drains the queue when online
+    // ═══════════════════════════════════════════════════════════════════════
     async function trySyncQueue() {
       var q = getQueue();
       if (q.length === 0) return;
 
       console.log('[CrispNW] Sync loop: attempting to flush', q.length, 'queued leads…');
 
+      // Walk backwards so splicing doesn't shift indices
       for (var i = q.length - 1; i >= 0; i--) {
         var payload = q[i];
         try {
-          var controller = new AbortController();
-          var tid = setTimeout(function() { controller.abort(); }, 8000);
+          // V10: iframe engine for sync queue too
+          await sendDataForm(payload);
 
-          // V9: GET pivot for sync queue too
-          var syncUrl = BACKEND_URL + '?data=' + encodeURIComponent(JSON.stringify(payload));
-
-          await fetch(syncUrl, {
-            method : 'GET',
-            mode   : 'no-cors',
-            signal : controller.signal
-          });
-
-          // Opaque — no throw = success
-          clearTimeout(tid);
-          console.log('[CrispNW] Synced queued lead via GET pivot (v9):', payload.timestamp);
+          console.log('[CrispNW] Synced queued lead via iframe engine (v10):', payload.timestamp);
           dequeue(i);
 
         } catch (err) {
           console.warn('[CrispNW] Still offline, lead remains queued:', payload.timestamp);
-          break;
+          break; // No point retrying the rest if we're still offline
         }
       }
 
@@ -359,13 +413,21 @@
       }
     }
 
+    // Start the 60-second sync loop
     setInterval(trySyncQueue, SYNC_INTERVAL);
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // STATUS BAR
+    // ═══════════════════════════════════════════════════════════════════════
     function setStatus(type, msg) {
-      document.getElementById('status-bar').className = type;
+      var bar = document.getElementById('status-bar');
+      bar.className = type;
       document.getElementById('status-msg').textContent = msg;
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // SESSION HISTORY LOG
+    // ═══════════════════════════════════════════════════════════════════════
     function addToHistory(status, payload, isQueued) {
       var empty = document.getElementById('empty-state');
       if (empty) empty.remove();
@@ -373,12 +435,13 @@
       var list = document.getElementById('history-list');
       var li   = document.createElement('li');
 
-      var badgeClass = isQueued              ? 'badge-queued'
+      var badgeClass = isQueued         ? 'badge-queued'
                      : status === 'Interested' ? 'badge-interested'
                      : status === 'Maybe'       ? 'badge-maybe'
-                     :                           'badge-not';
+                     : 'badge-not';
 
       var badgeLabel = isQueued ? '📵 Queued' : status;
+
       var coords = payload.lat.toFixed(5) + ', ' + payload.lng.toFixed(5);
       var time   = new Date(payload.timestamp).toLocaleTimeString();
 
@@ -390,9 +453,12 @@
       list.insertBefore(li, list.firstChild);
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // BOOT
+    // ═══════════════════════════════════════════════════════════════════════
     initGPS();
-    updateQueueUI();
-    trySyncQueue();
+    updateQueueUI();          // show any leftover queued leads from a previous session
+    trySyncQueue();           // immediately try to flush queue on app open
   </script>
 
 </body>

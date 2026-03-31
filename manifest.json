@@ -1,0 +1,24 @@
+{
+  "name": "CrispNW Canvas",
+  "short_name": "CrispNW Canvas",
+  "description": "CrispNW Field Canvas – mobile-first lead logging tool for window cleaning estimates.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f0f4f8",
+  "theme_color": "#1a73e8",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "https://via.placeholder.com/192x192/1a73e8/ffffff?text=CN",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "https://via.placeholder.com/512x512/1a73e8/ffffff?text=CN",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -226,7 +226,7 @@
         function(pos) {
           currentLat = pos.coords.latitude;
           currentLng = pos.coords.longitude;
-          setGPS('active', 'GPS locked ±' + Math.round(pos.coords.accuracy) + 'm');
+          setGPS('active', 'GPS locked \u00b1' + Math.round(pos.coords.accuracy) + 'm');
           enableButtons(true);
           setStatus('idle', '📍 Ready — tap a status button to log this address.');
         },
@@ -334,7 +334,7 @@
     }
 
     // ═══════════════════════════════════════════════════════════════════════
-    // SUBMIT LEAD  (offline-first)
+    // SUBMIT LEAD  (Antigravity offline-first)
     // ═══════════════════════════════════════════════════════════════════════
     async function submitLead(status) {
       if (currentLat === null) {
@@ -359,7 +359,7 @@
 
         // Blind success — form submitted without throw = data is on its way.
         console.log('[CrispNW] Lead sent via iframe engine (v10):', payload.status, payload.lat, payload.lng);
-        setStatus('success', '✅ "' + status + '" logged! Check your Sheet.');
+        setStatus('success', '\u2705 "' + status + '" logged! Check your Sheet.');
         addToHistory(status, payload, false);
         document.getElementById('notes').value = '';
 

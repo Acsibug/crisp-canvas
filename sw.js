@@ -1,7 +1,7 @@
 // CrispNW Field Canvas — Service Worker v1.0
 // Offline App Shell cache + Background Sync for lead queue
 
-const CACHE_NAME = 'crispnw-shell-v4';
+const CACHE_NAME = 'crispnw-shell-v5';
 const APP_SHELL  = ['/', '/index.html', '/manifest.json'];
 // ── Install: pre-cache App Shell ────────────────────────────────────────────
 self.addEventListener('install', event => {

@@ -155,7 +155,7 @@
   <header>
     <div class="header-title">
       <h1>CrispNW</h1>
-      <p>Field Canvas â v10.0 (Iframe Engine)</p>
+      <p>Field Canvas — v10.0 (Iframe Engine)</p>
     </div>
     <!-- Queue badge: shows count of leads waiting for signal -->
     <div id="queue-badge">
@@ -183,19 +183,19 @@
     </div>
     <div class="btn-row">
       <button class="btn btn-interested" id="btn-interested" onclick="submitLead('Interested')" disabled>
-        <span class="icon">â</span><span class="label">Interested</span>
+        <span class="icon">✅</span><span class="label">Interested</span>
       </button>
       <button class="btn btn-maybe" id="btn-maybe" onclick="submitLead('Maybe')" disabled>
-        <span class="icon">ð¤</span><span class="label">Maybe</span>
+        <span class="icon">🤔</span><span class="label">Maybe</span>
       </button>
       <button class="btn btn-not" id="btn-not" onclick="submitLead('Not Interested')" disabled>
-        <span class="icon">â</span><span class="label">Not Interested</span>
+        <span class="icon">❌</span><span class="label">Not Interested</span>
       </button>
     </div>
   </div>
 
   <div id="status-bar" class="idle">
-    <span id="status-icon">ð</span>
+    <span id="status-icon">📍</span>
     <span id="status-msg">Waiting for GPS lockâ¦</span>
   </div>
 
@@ -208,7 +208,7 @@
 
   <script>
     // âââ CONFIG ââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-    // V10: Iframe Engine â hidden <form> POST bypasses fetch() and all CORS/redirect
+    // V10: Iframe Engine — hidden <form> POST bypasses fetch() and all CORS/redirect
     // restrictions. Backend reads payload via e.parameter.data (form field "data").
     var BACKEND_URL   = 'https://script.google.com/macros/s/AKfycbxv2KvRSyWvqOOYD5qm_bEBmzeIR1lvTGxso6mVJqlqtesbUz-tqTMoYTAn4Poy9n2s/exec';
     var QUEUE_KEY     = 'crispnw_pendingLeads';   // localStorage key
@@ -229,7 +229,7 @@
           currentLng = pos.coords.longitude;
           setGPS('active', 'GPS locked \u00b1' + Math.round(pos.coords.accuracy) + 'm');
           enableButtons(true);
-          setStatus('idle', 'ð Ready â tap a status button to log this address.');
+          setStatus('idle', '📍 Ready — tap a status button to log this address.');
         },
         function(err) {
           setGPS('error', 'GPS error: ' + err.message);
@@ -289,13 +289,13 @@
       if (count > 0) {
         document.getElementById('sync-msg').textContent =
           count + ' lead' + (count > 1 ? 's' : '') +
-          ' queued â waiting for signal to syncâ¦';
+          ' queued — waiting for signal to syncâ¦';
       }
     }
 
     // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-    // TRANSPORT â sendDataForm(payload)
-    //   V10: Iframe Engine â bypasses fetch() entirely.
+    // TRANSPORT — sendDataForm(payload)
+    //   V10: Iframe Engine — bypasses fetch() entirely.
     //   A hidden <form> POSTs to the backend via a hidden <iframe> target.
     //   Form submissions are NOT subject to CORS, no-cors restrictions, or
     //   302-redirect body stripping on any browser or mobile network.
@@ -325,7 +325,7 @@
 
         form.submit();
 
-        // Blind success â form is fire-and-forget; resolve after iframe settles
+        // Blind success — form is fire-and-forget; resolve after iframe settles
         setTimeout(function() {
           iframe.remove();
           form.remove();
@@ -358,7 +358,7 @@
       try {
         await sendDataForm(payload);
 
-        // Blind success â form submitted without throw = data is on its way.
+        // Blind success — form submitted without throw = data is on its way.
         console.log('[CrispNW] Lead sent via iframe engine (v10):', payload.status, payload.lat, payload.lng);
         setStatus('success', '\u2705 "' + status + '" logged! Check your Sheet.');
         addToHistory(status, payload, false);
@@ -370,7 +370,7 @@
         enqueue(payload);
         updateQueueUI();
         setStatus('queued',
-          'ðµ No signal â lead queued (' + getQueue().length + ' waiting). Will sync automatically.');
+          'ðµ No signal — lead queued (' + getQueue().length + ' waiting). Will sync automatically.');
         addToHistory(status, payload, true); // true = queued
         document.getElementById('notes').value = '';
       }
@@ -379,7 +379,7 @@
     }
 
     // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
-    // SYNC LOOP  â runs every 60 s, drains the queue when online
+    // SYNC LOOP  — runs every 60 s, drains the queue when online
     // âââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââââ
     async function trySyncQueue() {
       var q = getQueue();
@@ -407,9 +407,9 @@
       updateQueueUI();
 
       if (remaining === 0) {
-        setStatus('success', 'ð Sync complete â all queued leads pushed to Sheet!');
+        setStatus('success', 'ð Sync complete — all queued leads pushed to Sheet!');
         setTimeout(function() {
-          setStatus('idle', 'ð Ready â tap a status button to log this address.');
+          setStatus('idle', '📍 Ready — tap a status button to log this address.');
         }, 3000);
       }
     }
